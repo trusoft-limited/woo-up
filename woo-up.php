@@ -81,10 +81,10 @@ function up_init_gateway_class() {
             $transaction = json_decode( $json['body'], true );
             $order_id = substr($transaction['description'], strpos($transaction['description'], 'ID: ')+4);
             $order_id = (int)$order_id;
-            $order_total = $order->get_total();
             $amount_paid = $transaction['Amount'];
             if(is_numeric($order_id)) {
                 $order = wc_get_order($order_id);
+                $order_total = $order->get_total();
                 if($transaction['Status'] != 'Approved'){
                     if($transaction['Amount'] < $order->get_total()){
                         $order->update_status('on-hold', '');
