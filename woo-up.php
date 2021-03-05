@@ -24,7 +24,8 @@ function up_add_gateway_class( $gateways ) {
 /*
  * The class itself, please note that it is inside plugins_loaded action hook
  */
-add_action( 'plugins_loaded', 'up_init_gateway_class', 0);
+add_action( 'plugins_loaded', 'up_init_gateway_class');
+
 function up_init_gateway_class() {
 
     if ( ! class_exists( 'WC_Payment_Gateway' ) ) return;
@@ -67,40 +68,7 @@ function up_init_gateway_class() {
             //add_action( 'wp_enqueue_scripts', array( $this, 'payment_scripts' ) );
 
             // You can also register a webhook here
-            add_action( 'woocommerce_api_up_callback', array( $this, 'check_trx_status' ) );
-        }
-
-        public function check_trx_status(){
-            global $woocommerce;
-            if( !isset( $_POST['trx_id'] ) )
-                return;
-            $args = array( 'timeout' => 60, 'sslverify' => false );
-            $baseUrl = $this->testmode ? 'http://196.46.20.80:8085/' : 'https://cipa.unifiedpaymentsnigeria.com/';
-            $transaction_id = $_POST['trx_id'];
-            $json = wp_remote_get($baseUrl.'status/'.$transaction_id, $args);
-            $transaction = json_decode( $json['body'], true );
-            $order_id = substr($transaction['description'], strpos($transaction['description'], 'ID: ')+4);
-            $order_id = (int)$order_id;
-            $amount_paid = $transaction['Amount'];
-            if(is_numeric($order_id)) {
-                $order = wc_get_order($order_id);
-                $order_total = $order->get_total();
-                if($transaction['Status'] != 'Approved'){
-                    if($transaction['Amount'] < $order->get_total()){
-                        $order->update_status('on-hold', '');
-                        $order->add_order_note('Look into this order. <br />This order is currently on hold.<br />Reason: Amount paid is less than the total order amount.<br />Amount Paid was &#8358;'.$amount_paid.' while the total order amount is &#8358;'.$order_total.'<br />UP Transaction ID: '.$transaction_id);
-                    } else
-                        $order->payment_complete();
-                    add_post_meta( $order_id, '_transaction_id', $transaction_id, true );
-                    $order->reduce_order_stock();
-                    $order->add_order_note( 'Hey, your order is paid! Thank you!', true );
-                    $woocommerce->cart->empty_cart();
-                    // update_option('webhook_debug', $_POST);
-                } else {
-                    wc_add_notice(  'Please try again.', 'error' );
-                    return;
-                }
-            }
+            add_action( 'woocommerce_before_thankyou', 'check_trx_status');
         }
 
         /**
@@ -182,7 +150,7 @@ function up_init_gateway_class() {
                 'body' => json_encode(array(
                     'amount' => $order->get_total(),
                     'currency' => 566,
-                    'description' => get_bloginfo('name').' - Order ID: $order_id',
+                    'description' => get_bloginfo('name')." - Order ID: $order_id",
                     'returnUrl' => $this->get_return_url($order),
                     'secretKey' => $this->secret_key,
                     'fee' => 0
@@ -193,7 +161,7 @@ function up_init_gateway_class() {
                     'Content-Type' => 'application/json; charset=utf-8'
                 )
             );
-            $baseUrl = $this->testmode ? 'http://196.46.20.80:8085/' : 'https://cipa.unifiedpaymentsnigeria.com/';
+            $baseUrl = $this->testmode ? 'https://test.payarena.com/' : 'https://cipa.unifiedpaymentsnigeria.com/';
             $payUrl = $baseUrl.$this->merchant_id;
 
             /*
@@ -241,6 +209,41 @@ function up_init_gateway_class() {
                 wc_add_notice(  'Connection error.', 'error' );
                 return;
             }
+        }
+
+        function check_trx_status(){
+            echo 'entering transaction status check';
+            global $woocommerce;
+            if( !isset( $_POST['trx_id'] ) )
+                return;
+            $args = array( 'timeout' => 60, 'sslverify' => false );
+            $baseUrl = $this->testmode ? 'https://test.payarena.com/' : 'https://cipa.unifiedpaymentsnigeria.com/';
+            $transaction_id = $_POST['trx_id'];
+            $json = wp_remote_get($baseUrl.'status/'.$transaction_id, $args);
+            $transaction = json_decode( $json['body'], true );
+            $order_id = substr($transaction['description'], strpos($transaction['description'], 'ID: ')+4);
+            $order_id = (int)$order_id;
+            $amount_paid = $transaction['Amount'];
+            if(is_numeric($order_id)) {
+                $order = wc_get_order($order_id);
+                $order_total = $order->get_total();
+                if($transaction['Status'] != 'Approved'){
+                    if($transaction['Amount'] < $order->get_total()){
+                        $order->update_status('on-hold', '');
+                        $order->add_order_note('Look into this order. <br />This order is currently on hold.<br />Reason: Amount paid is less than the total order amount.<br />Amount Paid was &#8358;'.$amount_paid.' while the total order amount is &#8358;'.$order_total.'<br />UP Transaction ID: '.$transaction_id);
+                    } else
+                        $order->payment_complete();
+                    add_post_meta( $order_id, '_transaction_id', $transaction_id, true );
+                    $order->reduce_order_stock();
+                    $order->add_order_note( 'Hey, your order is paid! Thank you!', true );
+                    $woocommerce->cart->empty_cart();
+                    // update_option('webhook_debug', $_POST);
+                } else {
+                    wc_add_notice(  'Please try again.', 'error' );
+                    return;
+                }
+            }
+//    wc_print_notice( __( 'woocommerce_before_thankyou hook has triggered', 'woocommerce' ), 'notice' );
         }
 
         /**
