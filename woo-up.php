@@ -68,7 +68,7 @@ function up_init_gateway_class() {
             //add_action( 'wp_enqueue_scripts', array( $this, 'payment_scripts' ) );
 
             // You can also register a webhook here
-            add_action( 'woocommerce_before_thankyou', 'check_trx_status');
+            add_action( 'woocommerce_before_thankyou', array($this,'check_trx_status'));
         }
 
         /**
@@ -212,38 +212,54 @@ function up_init_gateway_class() {
         }
 
         function check_trx_status(){
-            echo 'entering transaction status check';
+            //echo 'entering transaction status check';
+            // echo var_dump($_POST);
+            // echo $this->testmode;
             global $woocommerce;
-            if( !isset( $_POST['trx_id'] ) )
+            if( !isset( $_POST['trxId'] ) ){
+                //echo "exiting: no trxid detected";
                 return;
+            }
             $args = array( 'timeout' => 60, 'sslverify' => false );
             $baseUrl = $this->testmode ? 'https://test.payarena.com/' : 'https://cipa.unifiedpaymentsnigeria.com/';
-            $transaction_id = $_POST['trx_id'];
-            $json = wp_remote_get($baseUrl.'status/'.$transaction_id, $args);
+            $transaction_id = $_POST['trxId'];
+            $statusUrl = $baseUrl.'status/'.$transaction_id;
+            //echo "calling $statusUrl";
+            $json = wp_remote_get($statusUrl, $args);
+            //echo var_dump($json);
             $transaction = json_decode( $json['body'], true );
-            $order_id = substr($transaction['description'], strpos($transaction['description'], 'ID: ')+4);
+            //echo var_dump($transaction);
+            $order_id = substr($transaction['Description'], strpos($transaction['Description'], 'ID: ')+4);
+            //echo var_dump($order_id);
             $order_id = (int)$order_id;
             $amount_paid = $transaction['Amount'];
+            //echo is_numeric($order_id);
             if(is_numeric($order_id)) {
                 $order = wc_get_order($order_id);
-                $order_total = $order->get_total();
-                if($transaction['Status'] != 'Approved'){
+                if($transaction['Status'] == 'Approved'){
+                    $order_total = $order->get_total();
                     if($transaction['Amount'] < $order->get_total()){
                         $order->update_status('on-hold', '');
                         $order->add_order_note('Look into this order. <br />This order is currently on hold.<br />Reason: Amount paid is less than the total order amount.<br />Amount Paid was &#8358;'.$amount_paid.' while the total order amount is &#8358;'.$order_total.'<br />UP Transaction ID: '.$transaction_id);
+                        add_post_meta( $order_id, '_transaction_id', $transaction_id, true );
                     } else
-                        $order->payment_complete();
-                    add_post_meta( $order_id, '_transaction_id', $transaction_id, true );
-                    $order->reduce_order_stock();
+                        $order->payment_complete($transaction_id);
+                    //$order->reduce_order_stock();
                     $order->add_order_note( 'Hey, your order is paid! Thank you!', true );
                     $woocommerce->cart->empty_cart();
                     // update_option('webhook_debug', $_POST);
                 } else {
-                    wc_add_notice(  'Please try again.', 'error' );
+                    echo "<h3>Your order is Cancelled, Payment did not succeed.</h3>";
+                    $order->update_status('cancelled');
+                    $order->add_order_note( 'Your payment was declined, order is not paid!', true );
+                    wc_add_notice( 'Please try again.', 'error' );
                     return;
                 }
+            } else {
+                echo "<h3>Order was not found</h3>";
+                wc_add_notice( 'Order not found.', 'error' );
             }
-//    wc_print_notice( __( 'woocommerce_before_thankyou hook has triggered', 'woocommerce' ), 'notice' );
+            //wc_print_notice( __( 'woocommerce_before_thankyou hook has triggered', 'woocommerce' ), 'notice' );
         }
 
         /**

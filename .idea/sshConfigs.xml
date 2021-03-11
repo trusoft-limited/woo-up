@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="SshConfigs">
+    <configs>
+      <sshConfig host="mall.payarena.com" id="21a05cfe-31a4-48d6-95d9-55312bceadf3" keyPath="$USER_HOME$/OneDrive/Documents/unified-payments/payarena-mall-ssh" port="22" customName="payarena-mall" nameFormat="CUSTOM" username="opc">
+        <option name="customName" value="payarena-mall" />
+      </sshConfig>
+    </configs>
+  </component>
+</project>
